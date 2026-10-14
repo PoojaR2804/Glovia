@@ -1,6 +1,5 @@
-
 import { useState } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -11,21 +10,16 @@ function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-
   const isBuyNow =
     new URLSearchParams(location.search).get("mode") === "buyNow";
 
-  
   const buyNowItem = isBuyNow
     ? JSON.parse(localStorage.getItem("gloviaBuyNow") || "null")
     : null;
 
-  
-  
   const checkoutItems =
     isBuyNow && buyNowItem ? [buyNowItem] : cart;
 
-  
   const subtotal = checkoutItems.reduce(
     (total, item) =>
       total + Number(item.price) * Number(item.quantity || 1),
@@ -58,19 +52,27 @@ function Checkout() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setError("");
 
-    if (checkoutItems.length === 0) {
+    const token = localStorage.getItem("gloviaToken");
+
+    if (!token || localStorage.getItem("gloviaLoggedIn") !== "true") {
+      navigate("/login");
+      return;
+    }
+
+    if (!checkoutItems.length) {
       setError("Your cart is empty. Please add products first.");
       return;
     }
 
+    // Save checkout details and continue to payment.
     const checkoutData = {
-      address,
+      address: { ...address },
       items: checkoutItems,
-      total: finalTotal,
-      subtotal,
+      total: subtotal,
+      finalTotal,
       deliveryCharge,
-      date: new Date().toISOString(),
       isBuyNow,
     };
 
@@ -87,7 +89,6 @@ function Checkout() {
       <Navbar />
 
       <div className="checkout-page">
-        
         <section className="checkout-heading">
           <p>GLOVIA COLLECTION</p>
           <h1>Checkout</h1>
@@ -100,14 +101,12 @@ function Checkout() {
           <div className="checkout-empty">
             <h2>Your cart is empty!</h2>
             <p>Add some skincare products to continue.</p>
-
             <Link to="/products" className="checkout-shop-btn">
               Shop Now
             </Link>
           </div>
         ) : (
           <div className="checkout-container">
-        
             <div className="checkout-form-section">
               <h2>Delivery Address</h2>
 
@@ -122,9 +121,9 @@ function Checkout() {
                     <input
                       type="text"
                       name="fullName"
-                      placeholder="Enter your full name"
                       value={address.fullName}
                       onChange={handleChange}
+                      placeholder="Enter your full name"
                       required
                     />
                   </div>
@@ -134,11 +133,11 @@ function Checkout() {
                     <input
                       type="tel"
                       name="phone"
-                      placeholder="Enter phone number"
                       value={address.phone}
                       onChange={handleChange}
+                      placeholder="Enter phone number"
                       pattern="[0-9]{10}"
-                      maxLength="10"
+                      maxLength={10}
                       required
                     />
                   </div>
@@ -148,9 +147,9 @@ function Checkout() {
                     <input
                       type="email"
                       name="email"
-                      placeholder="Enter your email"
                       value={address.email}
                       onChange={handleChange}
+                      placeholder="Enter your email"
                       required
                     />
                   </div>
@@ -159,9 +158,9 @@ function Checkout() {
                     <label>House / Street Address</label>
                     <textarea
                       name="house"
-                      placeholder="Enter your complete address"
                       value={address.house}
                       onChange={handleChange}
+                      placeholder="Enter your complete address"
                       required
                     />
                   </div>
@@ -171,9 +170,9 @@ function Checkout() {
                     <input
                       type="text"
                       name="city"
-                      placeholder="Enter city"
                       value={address.city}
                       onChange={handleChange}
+                      placeholder="Enter city"
                       required
                     />
                   </div>
@@ -183,9 +182,9 @@ function Checkout() {
                     <input
                       type="text"
                       name="state"
-                      placeholder="Enter state"
                       value={address.state}
                       onChange={handleChange}
+                      placeholder="Enter state"
                       required
                     />
                   </div>
@@ -195,11 +194,11 @@ function Checkout() {
                     <input
                       type="text"
                       name="pincode"
-                      placeholder="Enter 6-digit PIN code"
                       value={address.pincode}
                       onChange={handleChange}
+                      placeholder="Enter 6-digit PIN code"
                       pattern="[0-9]{6}"
-                      maxLength="6"
+                      maxLength={6}
                       required
                     />
                   </div>
@@ -211,36 +210,39 @@ function Checkout() {
                 >
                   Continue to Payment
                 </button>
+
+                <p className="checkout-delivery-note">
+                  Choose your payment method on the next page.
+                </p>
               </form>
             </div>
 
-    
             <div className="checkout-summary">
               <h2>Order Summary</h2>
 
               <div className="checkout-items">
-                {checkoutItems.map((item) => (
+                {checkoutItems.map((item, index) => (
                   <div
                     className="checkout-item"
-                    key={item.id}
+                    key={item.id || index}
                   >
                     <img
                       src={item.image || item.Image}
-                      alt={item.name}
+                      alt={item.name || item.Name || "Product"}
                     />
 
                     <div className="checkout-item-info">
-                      <h3>{item.name}</h3>
+                      <h3>{item.name || item.Name}</h3>
                       <p>Qty: {item.quantity || 1}</p>
                       <p>
-                        ₹{Number(item.price).toFixed(2)} each
+                        ₹{Number(item.price || item.Price || 0).toFixed(2)} each
                       </p>
                     </div>
 
                     <strong>
                       ₹
                       {(
-                        Number(item.price) *
+                        Number(item.price || item.Price || 0) *
                         Number(item.quantity || 1)
                       ).toFixed(2)}
                     </strong>

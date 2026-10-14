@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import Footer from "../components/Footer";
@@ -9,29 +9,113 @@ import { useCart } from "../context/CartContext";
 function Wishlist() {
   const navigate = useNavigate();
 
-
   const [addedProduct, setAddedProduct] = useState(null);
-
-  const [wishlist, setWishlist] = useState(() =>
-    JSON.parse(localStorage.getItem("gloviaWishlist") || "[]")
-  );
+  const [wishlist, setWishlist] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const { addToCart } = useCart();
 
-  
-  const removeFromWishlist = (id) => {
-    const updatedWishlist = wishlist.filter(
-      (item) => item.id !== id
-    );
+  const API_URL = "http://127.0.0.1:8000/api";
 
-    setWishlist(updatedWishlist);
-
-    localStorage.setItem(
-      "gloviaWishlist",
-      JSON.stringify(updatedWishlist)
-    );
+  const getToken = () => {
+    return localStorage.getItem("gloviaToken");
   };
 
+  // ---------------- LOAD WISHLIST ----------------
+
+  useEffect(() => {
+    const loadWishlist = async () => {
+      const token = getToken();
+
+      if (!token) {
+        setWishlist([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/wishlist/`, {
+          headers: {
+            Authorization: `Token ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to load wishlist");
+        }
+
+        const data = await response.json();
+
+        const products = data.items.map((item) => ({
+          ...item.product,
+          Image: item.product.image,
+          wishlistItemId: item.id,
+          price: Number(item.product.price),
+          rating: Number(item.product.rating),
+        }));
+
+        setWishlist(products);
+      } catch (error) {
+        console.error("Wishlist loading error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadWishlist();
+  }, []);
+
+  // ---------------- REMOVE FROM WISHLIST ----------------
+
+  const removeFromWishlist = async (id) => {
+    const token = getToken();
+
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+
+    const item = wishlist.find(
+      (item) => item.id === id
+    );
+
+    if (!item) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/wishlist/items/${item.wishlistItemId}/`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Token ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to remove from wishlist");
+      }
+
+      const data = await response.json();
+
+      const products = data.items.map((item) => ({
+        ...item.product,
+        Image: item.product.image,
+        wishlistItemId: item.id,
+        price: Number(item.product.price),
+        rating: Number(item.product.rating),
+      }));
+
+      setWishlist(products);
+    } catch (error) {
+      console.error(
+        "Remove wishlist error:",
+        error
+      );
+    }
+  };
+
+  // ---------------- ADD TO CART ----------------
 
   const handleAddToCart = (product) => {
     const isLoggedIn =
@@ -50,14 +134,13 @@ function Wishlist() {
     <>
       <Navbar />
 
-      
       <AddToCartPopup
         productName={addedProduct}
         onClose={() => setAddedProduct(null)}
       />
 
       <div className="wishlist-page">
-    
+
         <section className="wishlist-header">
           <p>GLOVIA COLLECTION</p>
 
@@ -68,16 +151,23 @@ function Wishlist() {
           </span>
         </section>
 
-      
-        {wishlist.length > 0 ? (
+        {loading ? (
+          <section className="empty-wishlist">
+            <h2>Loading Wishlist...</h2>
+          </section>
+        ) : wishlist.length > 0 ? (
+
           <section className="wishlist-grid">
+
             {wishlist.map((product) => (
+
               <div
                 className="wishlist-card"
                 key={product.id}
               >
-                
+
                 <div className="wishlist-image">
+
                   <Link
                     to={`/product/${product.id}`}
                     className="wishlist-image-link"
@@ -88,7 +178,6 @@ function Wishlist() {
                     />
                   </Link>
 
-                  
                   <button
                     type="button"
                     className="wishlist-remove-heart"
@@ -99,10 +188,11 @@ function Wishlist() {
                   >
                     ♥
                   </button>
+
                 </div>
 
-                
                 <div className="wishlist-info">
+
                   <p>{product.category}</p>
 
                   <h3>{product.name}</h3>
@@ -115,22 +205,29 @@ function Wishlist() {
                     ₹{product.price}
                   </div>
 
-            
                   <button
                     type="button"
                     className="wishlist-cart-button"
-                    onClick={() => handleAddToCart(product)}
+                    onClick={() =>
+                      handleAddToCart(product)
+                    }
                   >
                     <span>🛒</span>
                     Add to Cart
                   </button>
+
                 </div>
+
               </div>
+
             ))}
+
           </section>
+
         ) : (
-      
+
           <section className="empty-wishlist">
+
             <div className="empty-wishlist-icon">
               ♡
             </div>
@@ -147,8 +244,11 @@ function Wishlist() {
             >
               Explore Products →
             </Link>
+
           </section>
+
         )}
+
       </div>
 
       <Footer />

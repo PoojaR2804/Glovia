@@ -4,18 +4,26 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import "./Payment.css";
 
+const API_URL = "http://127.0.0.1:8000/api/";
+
 function Payment() {
   const navigate = useNavigate();
 
-  const checkoutData = JSON.parse(
-    localStorage.getItem("gloviaCheckout") || "null"
-  );
+  const [checkoutData] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("gloviaCheckout") || "null");
+    } catch {
+      return null;
+    }
+  });
 
   const [paymentMethod, setPaymentMethod] = useState("upi");
   const [upiId, setUpiId] = useState("");
   const [cardNumber, setCardNumber] = useState("");
   const [expiry, setExpiry] = useState("");
   const [cvv, setCvv] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   if (!checkoutData) {
     return (
@@ -32,65 +40,152 @@ function Payment() {
   }
 
   const subtotal = Number(checkoutData.total || 0);
-  const delivery = subtotal >= 999 ? 0 : 50;
+  const delivery =
+    subtotal >= 999 ? 0 : Number(checkoutData.deliveryCharge ?? 50);
   const total = subtotal + delivery;
 
-  const handlePayment = (e) => {
+  const handlePayment = async (e) => {
     e.preventDefault();
+    setError("");
 
     if (paymentMethod === "upi" && !upiId.trim()) {
-      alert("Please enter your UPI ID.");
+      setError("Please enter your UPI ID.");
       return;
     }
 
-    if (paymentMethod === "card") {
-      if (!cardNumber.trim() || !expiry.trim() || !cvv.trim()) {
-        alert("Please fill in all card details.");
-        return;
-      }
+    if (
+      paymentMethod === "card" &&
+      (!cardNumber.trim() || !expiry.trim() || !cvv.trim())
+    ) {
+      setError("Please fill in all card details.");
+      return;
     }
 
-    
-    const orderDate = new Date();
-    const deliveryDate = new Date(orderDate);
-    deliveryDate.setDate(deliveryDate.getDate() + 5);
+    const token = localStorage.getItem("gloviaToken");
 
-    
-    const order = {
-      ...checkoutData,
-      total,
-      paymentMethod,
-      paymentStatus:
-        paymentMethod === "cod"
-          ? "Cash on Delivery"
-          : "Demo Payment Successful",
-      orderId: "GLOVIA" + Date.now(),
-      orderDate: orderDate.toISOString(),
-      deliveryDate: deliveryDate.toISOString(),
-      trackingStatus: 0,
-    };
+    if (!token || localStorage.getItem("gloviaLoggedIn") !== "true") {
+      navigate("/login");
+      return;
+    }
 
-    
-    const existingOrders = JSON.parse(
-      localStorage.getItem("gloviaOrders") || "[]"
-    );
+    setLoading(true);
 
-    localStorage.setItem(
-      "gloviaOrders",
-      JSON.stringify([...existingOrders, order])
-    );
+    try {
+      const address = checkoutData.address || {};
 
-  
-    localStorage.setItem(
-      "gloviaCurrentOrder",
-      JSON.stringify(order)
-    );
+      const fullAddress = [
+        address.house,
+        address.city,
+        address.state,
+        address.pincode,
+      ]
+        .filter(Boolean)
+        .join(", ");
 
-  
-    localStorage.setItem("gloviaCart", "[]");
+      const orderPayload = {
+        full_name: address.fullName,
+        phone: address.phone,
+        address: fullAddress,
+      };
 
-    
-    navigate("/order-success");
+      // Send Buy Now product details when applicable.
+      if (checkoutData.isBuyNow && checkoutData.items?.length) {
+        const item = checkoutData.items[0];
+
+        orderPayload.buy_now_product_id =
+          item.product_id || item.id;
+
+        orderPayload.buy_now_quantity = Number(item.quantity || 1);
+      }
+
+      // Create the order in the Django database.
+      const response = await fetch(`${API_URL}orders/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Token ${token}`,
+          Accept: "application/json",
+        },
+        body: JSON.stringify(orderPayload),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          "The server returned an unexpected response. Check your Django terminal."
+        );
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            data.detail ||
+            "Unable to place your order."
+        );
+      }
+
+      const orderDate = data.created_at || new Date().toISOString();
+      const deliveryDate = new Date(orderDate);
+      deliveryDate.setDate(deliveryDate.getDate() + 5);
+
+      const order = {
+        ...data,
+        orderId: data.id,
+        total: Number(data.total_amount ?? total),
+        paymentMethod:
+          paymentMethod === "cod"
+            ? "Cash on Delivery"
+            : `${paymentMethod.toUpperCase()} (Demo)`,
+        paymentStatus:
+          paymentMethod === "cod"
+            ? "Cash on Delivery"
+            : "Demo Payment Successful",
+        orderDate,
+        deliveryDate: deliveryDate.toISOString(),
+        trackingStatus: 0,
+      };
+
+      // Save a local copy for the success and tracking pages.
+      const existingOrders = JSON.parse(
+        localStorage.getItem("gloviaOrders") || "[]"
+      );
+
+      localStorage.setItem(
+        "gloviaOrders",
+        JSON.stringify([...existingOrders, order])
+      );
+
+      localStorage.setItem(
+        "gloviaCurrentOrder",
+        JSON.stringify(order)
+      );
+
+      localStorage.setItem(
+        "gloviaLastOrder",
+        JSON.stringify(data)
+      );
+
+      localStorage.removeItem("gloviaCheckout");
+
+      if (checkoutData.isBuyNow) {
+        localStorage.removeItem("gloviaBuyNow");
+      } else {
+        localStorage.setItem("gloviaCart", "[]");
+      }
+
+      navigate("/order-success", {
+        state: { orderId: data.id },
+      });
+    } catch (err) {
+      setError(
+        err.message || "Something went wrong while placing your order."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -106,7 +201,6 @@ function Payment() {
 
         <div className="payment-layout">
           <form className="payment-form" onSubmit={handlePayment}>
-            
             <div className="payment-card payment-address-card">
               <div className="payment-address-heading">
                 <h2>Delivery Address</h2>
@@ -120,34 +214,27 @@ function Payment() {
 
               <div className="payment-address-details">
                 <h3>{checkoutData.address?.fullName}</h3>
-
                 <p>{checkoutData.address?.house}</p>
-
                 <p>
                   {checkoutData.address?.city},{" "}
                   {checkoutData.address?.state} -{" "}
                   {checkoutData.address?.pincode}
                 </p>
-
                 <p>Phone: {checkoutData.address?.phone}</p>
                 <p>Email: {checkoutData.address?.email}</p>
               </div>
             </div>
 
-            
             <div className="payment-card">
               <h2>Select Payment Method</h2>
 
-          
               <label className="payment-option">
                 <input
                   type="radio"
                   name="payment"
                   value="upi"
                   checked={paymentMethod === "upi"}
-                  onChange={(e) =>
-                    setPaymentMethod(e.target.value)
-                  }
+                  onChange={(e) => setPaymentMethod(e.target.value)}
                 />
                 <span>UPI Payment</span>
               </label>
@@ -167,16 +254,13 @@ function Payment() {
                 </div>
               )}
 
-              
               <label className="payment-option">
                 <input
                   type="radio"
                   name="payment"
                   value="card"
                   checked={paymentMethod === "card"}
-                  onChange={(e) =>
-                    setPaymentMethod(e.target.value)
-                  }
+                  onChange={(e) => setPaymentMethod(e.target.value)}
                 />
                 <span>Credit / Debit Card</span>
               </label>
@@ -188,9 +272,7 @@ function Payment() {
                     type="text"
                     placeholder="Enter any demo card number"
                     value={cardNumber}
-                    onChange={(e) =>
-                      setCardNumber(e.target.value)
-                    }
+                    onChange={(e) => setCardNumber(e.target.value)}
                   />
 
                   <div className="card-details-row">
@@ -200,9 +282,7 @@ function Payment() {
                         type="text"
                         placeholder="MM/YY"
                         value={expiry}
-                        onChange={(e) =>
-                          setExpiry(e.target.value)
-                        }
+                        onChange={(e) => setExpiry(e.target.value)}
                       />
                     </div>
 
@@ -223,16 +303,13 @@ function Payment() {
                 </div>
               )}
 
-            
               <label className="payment-option">
                 <input
                   type="radio"
                   name="payment"
                   value="cod"
                   checked={paymentMethod === "cod"}
-                  onChange={(e) =>
-                    setPaymentMethod(e.target.value)
-                  }
+                  onChange={(e) => setPaymentMethod(e.target.value)}
                 />
                 <span>Cash on Delivery</span>
               </label>
@@ -244,14 +321,22 @@ function Payment() {
               )}
             </div>
 
-            
+            {error && (
+              <p className="checkout-error" role="alert">
+                {error}
+              </p>
+            )}
+
             <button
               type="submit"
               className="payment-submit-btn"
+              disabled={loading}
             >
-              {paymentMethod === "cod"
-                ? "Confirm Order"
-                : `Pay ₹${total.toFixed(2)}`}
+              {loading
+                ? "Processing..."
+                : paymentMethod === "cod"
+                  ? "Confirm Order"
+                  : `Pay ₹${total.toFixed(2)}`}
             </button>
 
             <Link to="/checkout" className="payment-back-link">
@@ -259,7 +344,6 @@ function Payment() {
             </Link>
           </form>
 
-          
           <div className="payment-summary">
             <h2>Order Summary</h2>
 

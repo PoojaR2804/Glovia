@@ -5,29 +5,84 @@ function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [socialMessage, setSocialMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const navigate = useNavigate();
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
 
+    setError("");
+
+    const name = e.target.name.value.trim();
+    const email = e.target.email.value.trim();
     const password = e.target.password.value;
     const confirmPassword = e.target.confirmPassword.value;
 
+    // Check passwords
     if (password !== confirmPassword) {
-      alert("Passwords do not match!");
+      setError("Passwords do not match!");
       return;
     }
 
-    localStorage.setItem("gloviaLoggedIn", "true");
+    // Create username from email
+    const username = email.split("@")[0];
 
-    navigate("/login");
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/register/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: username,
+            email: email,
+            password: password,
+            first_name: name,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.username) {
+          setError(data.username[0]);
+        } else if (data.email) {
+          setError(data.email[0]);
+        } else if (data.password) {
+          setError(data.password[0]);
+        } else if (data.error) {
+          setError(data.error);
+        } else {
+          setError("Registration failed. Please try again.");
+        }
+
+        return;
+      }
+
+      // Registration successful
+      setShowSuccess(true);
+
+    } catch (error) {
+      console.error("Registration error:", error);
+      setError(
+        "Unable to connect to the server. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="register-page">
 
-    
       <div className="register-showcase">
 
         <div className="register-brand">
@@ -53,13 +108,10 @@ function Register() {
 
       </div>
 
-
-      
       <div className="register-section">
 
         <div className="register-card">
 
-          
           <div className="welcome-icon">
             ♡
           </div>
@@ -70,11 +122,8 @@ function Register() {
             Start your skincare journey with GLOVIA
           </p>
 
-
-          
           <form onSubmit={handleRegister}>
 
-          
             <label>Full Name</label>
 
             <div className="register-input">
@@ -90,8 +139,6 @@ function Register() {
 
             </div>
 
-
-            
             <label>Email Address</label>
 
             <div className="register-input">
@@ -107,8 +154,6 @@ function Register() {
 
             </div>
 
-
-            
             <label>Password</label>
 
             <div className="register-input">
@@ -135,8 +180,6 @@ function Register() {
 
             </div>
 
-
-            
             <label>Confirm Password</label>
 
             <div className="register-input">
@@ -144,7 +187,11 @@ function Register() {
               <span>🔒</span>
 
               <input
-                type={showConfirmPassword ? "text" : "password"}
+                type={
+                  showConfirmPassword
+                    ? "text"
+                    : "password"
+                }
                 name="confirmPassword"
                 placeholder="Confirm your password"
                 required
@@ -155,7 +202,9 @@ function Register() {
                 type="button"
                 className="password-eye"
                 onClick={() =>
-                  setShowConfirmPassword(!showConfirmPassword)
+                  setShowConfirmPassword(
+                    !showConfirmPassword
+                  )
                 }
               >
                 {showConfirmPassword ? "◉" : "◌"}
@@ -163,8 +212,19 @@ function Register() {
 
             </div>
 
+            {error && (
+              <p
+                style={{
+                  color: "red",
+                  fontSize: "14px",
+                  marginTop: "10px",
+                  marginBottom: "10px",
+                }}
+              >
+                {error}
+              </p>
+            )}
 
-            
             <div className="terms">
 
               <input
@@ -173,7 +233,7 @@ function Register() {
               />
 
               <p>
-                I agree to the{" "}
+                I agree to{" "}
                 <a href="#terms">
                   Terms & Conditions
                 </a>
@@ -181,19 +241,18 @@ function Register() {
 
             </div>
 
-
-            
             <button
               type="submit"
               className="create-account-btn"
+              disabled={loading}
             >
-              Create Account
+              {loading
+                ? "Creating Account..."
+                : "Create Account"}
             </button>
 
           </form>
 
-
-  
           <div className="divider">
 
             <span></span>
@@ -204,11 +263,8 @@ function Register() {
 
           </div>
 
-
-    
           <div className="social-login">
 
-            
             <button
               type="button"
               onClick={() => setSocialMessage("Google")}
@@ -245,8 +301,6 @@ function Register() {
 
             </button>
 
-
-            
             <button
               type="button"
               onClick={() => setSocialMessage("Facebook")}
@@ -268,8 +322,6 @@ function Register() {
 
             </button>
 
-
-            
             <button
               type="button"
               onClick={() => setSocialMessage("Apple")}
@@ -298,8 +350,6 @@ function Register() {
 
           </div>
 
-
-          
           <p className="already-account">
 
             Already have an account?{" "}
@@ -314,8 +364,42 @@ function Register() {
 
       </div>
 
+      {/* SUCCESS POPUP */}
+      {showSuccess && (
+        <div
+          className="glovia-success-overlay"
+          onClick={() => setShowSuccess(false)}
+        >
+          <div
+            className="glovia-success-popup"
+            onClick={(e) => e.stopPropagation()}
+          >
 
-      
+            <div className="glovia-success-icon">
+              ✓
+            </div>
+
+            <h2>Account Created!</h2>
+
+            <p>
+              Your GLOVIA account has been created
+              successfully.
+            </p>
+
+            <button
+              onClick={() => {
+                setShowSuccess(false);
+                navigate("/login");
+              }}
+            >
+              Continue to Login
+            </button>
+
+          </div>
+        </div>
+      )}
+
+      {/* SOCIAL LOGIN POPUP */}
       {socialMessage && (
 
         <div
@@ -328,7 +412,6 @@ function Register() {
             onClick={(e) => e.stopPropagation()}
           >
 
-            
             <button
               className="modal-close"
               onClick={() => setSocialMessage("")}
@@ -336,8 +419,6 @@ function Register() {
               ×
             </button>
 
-
-            
             <div className="modal-icon">
 
               {socialMessage === "Google" && "G"}
@@ -348,18 +429,15 @@ function Register() {
 
             </div>
 
-
             <h2>
               Continue with {socialMessage}
             </h2>
-
 
             <p>
               {socialMessage} sign-in is not connected yet.
               <br />
               Please use your GLOVIA account to continue.
             </p>
-
 
             <button
               className="modal-login-btn"
@@ -373,6 +451,88 @@ function Register() {
         </div>
 
       )}
+
+      {/* POPUP STYLES */}
+      <style>{`
+        .glovia-success-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(45, 20, 30, 0.35);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 99999;
+        }
+
+        .glovia-success-popup {
+          width: 380px;
+          max-width: 90%;
+          background: #ffffff;
+          border-radius: 22px;
+          padding: 35px 30px 30px;
+          text-align: center;
+          box-shadow: 0 20px 60px rgba(80, 20, 40, 0.25);
+          animation: gloviaPopup 0.3s ease-out;
+        }
+
+        .glovia-success-icon {
+          width: 70px;
+          height: 70px;
+          margin: 0 auto 18px;
+          border-radius: 50%;
+          background: #fce1e9;
+          color: #d85c7d;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 38px;
+          font-weight: bold;
+        }
+
+        .glovia-success-popup h2 {
+          margin: 0 0 10px;
+          color: #b94f70;
+          font-size: 25px;
+        }
+
+        .glovia-success-popup p {
+          margin: 0 auto 25px;
+          color: #777;
+          font-size: 15px;
+          line-height: 1.6;
+        }
+
+        .glovia-success-popup button {
+          width: 100%;
+          border: none;
+          border-radius: 12px;
+          padding: 13px 20px;
+          background: #dc6382;
+          color: white;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: 0.2s ease;
+        }
+
+        .glovia-success-popup button:hover {
+          background: #c95171;
+          transform: translateY(-1px);
+        }
+
+        @keyframes gloviaPopup {
+          from {
+            opacity: 0;
+            transform: scale(0.88) translateY(10px);
+          }
+
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+      `}</style>
 
     </div>
   );

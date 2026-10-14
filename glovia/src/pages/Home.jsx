@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import Navbar from "../components/Navbar";
 import AddToCartPopup from "../components/AddToCartPopup";
+import { fetchProducts } from "../api/productApi";
 
 function Home() {
   const { addToCart } = useCart();
@@ -11,10 +12,71 @@ function Home() {
   const isLoggedIn =
     localStorage.getItem("gloviaLoggedIn") === "true";
 
-
   const [addedProduct, setAddedProduct] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  
+  const [wishlist, setWishlist] = useState([]);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
+
+  const API_URL = "http://127.0.0.1:8000/api";
+  const getToken = () => localStorage.getItem("gloviaToken");
+
+  // Load products from Django
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const data = await fetchProducts();
+        setProducts(data);
+      } catch (err) {
+        console.error("Product loading error:", err);
+        setError("Unable to load products. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProducts();
+  }, []);
+
+  // Load wishlist from Django
+  useEffect(() => {
+    const loadWishlist = async () => {
+      const token = getToken();
+
+      if (
+        !token ||
+        localStorage.getItem("gloviaLoggedIn") !== "true"
+      ) {
+        setWishlist([]);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/wishlist/`, {
+          headers: {
+            Authorization: `Token ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to load wishlist");
+        }
+
+        const data = await response.json();
+
+        setWishlist(
+          Array.isArray(data.items) ? data.items : []
+        );
+      } catch (err) {
+        console.error("Wishlist loading error:", err);
+      }
+    };
+
+    loadWishlist();
+  }, []);
+
   const categories = [
     { icon: "🧴", name: "Face Care", text: "Glow & nourish" },
     { icon: "💇", name: "Hair Care", text: "Healthy & beautiful" },
@@ -24,104 +86,90 @@ function Home() {
     { icon: "🪒", name: "Grooming", text: "Everyday essentials" },
   ];
 
-  
-  const products = [
-    {
-      id: 1,
-      category: "FACE CARE",
-      wishlistCategory: "Face Care",
-      name: "Hydrating Face Serum",
-      price: "₹499",
-      numericPrice: 499,
-      rating: "★★★★★",
-      reviews: "128",
-      image:
-        "https://i.pinimg.com/736x/b7/ed/58/b7ed5860528f5a05b933676419121f07.jpg",
-    },
-    {
-      id: 8,
-      category: "BODY CARE",
-      wishlistCategory: "Body Care",
-      name: "Gentle Body Wash",
-      price: "₹349",
-      numericPrice: 349,
-      rating: "★★★★☆",
-      reviews: "96",
-      image:
-        "https://i.pinimg.com/1200x/d9/90/4a/d9904aebb68408e72b9a624e8c41f58d.jpg",
-    },
-    {
-      id: 5,
-      category: "HAIR CARE",
-      wishlistCategory: "Hair Care",
-      name: "Silky Hair Serum",
-      price: "₹399",
-      numericPrice: 399,
-      rating: "★★★★★",
-      reviews: "74",
-      image:
-        "https://i.pinimg.com/736x/4a/58/1b/4a581b69de0742be200f3cccd820452b.jpg",
-    },
-    {
-      id: 11,
-      category: "SUN CARE",
-      wishlistCategory: "Sun Care",
-      name: "Daily Sunscreen SPF 50",
-      price: "₹599",
-      numericPrice: 599,
-      rating: "★★★★★",
-      reviews: "110",
-      image:
-        "https://i.pinimg.com/1200x/7d/00/87/7d008721779024847158783e8685ed91.jpg",
-    },
-  ];
+  // Add or remove a product from the backend wishlist
+  const toggleWishlist = async (product) => {
+    const token = getToken();
 
-  
-  const [wishlist, setWishlist] = useState(() =>
-    JSON.parse(localStorage.getItem("gloviaWishlist") || "[]")
-  );
-
-  const toggleWishlist = (product) => {
-    const alreadyAdded = wishlist.some(
-      (item) => item.id === product.id
-    );
-
-    let updatedWishlist;
-
-    if (alreadyAdded) {
-      updatedWishlist = wishlist.filter(
-        (item) => item.id !== product.id
-      );
-    } else {
-      const wishlistProduct = {
-        id: product.id,
-        name: product.name,
-        category: product.wishlistCategory,
-        price: product.numericPrice,
-        rating: product.rating.replace("☆", "").length,
-        Image: product.image,
-      };
-
-      updatedWishlist = [...wishlist, wishlistProduct];
+    if (
+      !isLoggedIn ||
+      !token
+    ) {
+      navigate("/login");
+      return;
     }
 
-    setWishlist(updatedWishlist);
+    if (wishlistLoading) return;
 
-    localStorage.setItem(
-      "gloviaWishlist",
-      JSON.stringify(updatedWishlist)
-    );
+    setWishlistLoading(true);
+
+    try {
+      const existingItem = wishlist.find(
+        (item) => item.product?.id === product.id
+      );
+
+      let response;
+
+      if (existingItem) {
+        // Remove product from wishlist
+        response = await fetch(
+          `${API_URL}/wishlist/items/${existingItem.id}/`,
+          {
+            method: "DELETE",
+            headers: {
+              Authorization: `Token ${token}`,
+            },
+          }
+        );
+      } else {
+        // Add product to wishlist
+        response = await fetch(
+          `${API_URL}/wishlist/items/`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Token ${token}`,
+            },
+            body: JSON.stringify({
+              product_id: product.id,
+            }),
+          }
+        );
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to update wishlist."
+        );
+      }
+
+      // Update the heart status using the backend response
+      setWishlist(
+        Array.isArray(data.items) ? data.items : []
+      );
+    } catch (err) {
+      console.error("Wishlist update error:", err);
+      window.alert(
+        err.message || "Unable to update wishlist. Please try again."
+      );
+    } finally {
+      setWishlistLoading(false);
+    }
   };
 
+  // Check whether a product is in the wishlist
   const isWishlisted = (productId) =>
-    wishlist.some((item) => item.id === productId);
+    wishlist.some(
+      (item) => item.product?.id === productId
+    );
 
-  
   const handleShopNow = () => {
     navigate(isLoggedIn ? "/products" : "/login");
   };
 
-
+  // Add product to cart
   const handleAddToCart = (product) => {
     if (!isLoggedIn) {
       navigate("/login");
@@ -131,29 +179,32 @@ function Home() {
     addToCart({
       id: product.id,
       name: product.name,
-      category: product.wishlistCategory,
-      price: product.numericPrice,
-      Image: product.image,
+      category: product.category,
+      price: Number(product.price),
+      Image: product.image || product.Image,
     });
 
-    
     setAddedProduct(product.name);
   };
+
+  // Display the first four products from Django
+  const featuredProducts = products.slice(0, 4);
 
   return (
     <div className="glovia-home">
       <Navbar />
 
-      
       <AddToCartPopup
         productName={addedProduct}
         onClose={() => setAddedProduct(null)}
       />
 
-      
-    <section className="glovia-hero">
+      {/* Hero Section */}
+      <section className="glovia-hero">
         <div className="hero-left">
-          <p className="hero-overline">BEAUTY • CARE • GLOW</p>
+          <p className="hero-overline">
+            BEAUTY • CARE • GLOW
+          </p>
 
           <h1>
             Your Skin.
@@ -189,10 +240,11 @@ function Home() {
         </div>
       </section>
 
-      
+      {/* Categories Section */}
       <section className="category-section" id="categories">
         <div className="decorative-heading">
           <p>SHOP BY CATEGORY</p>
+
           <div className="heading-decoration">
             <span></span>
             <b>♡</b>
@@ -203,11 +255,16 @@ function Home() {
         <div className="category-container">
           {categories.map((category, index) => (
             <Link
-              to={`/products?category=${encodeURIComponent(category.name)}`}
+              to={`/products?category=${encodeURIComponent(
+                category.name
+              )}`}
               className="category-box"
               key={index}
             >
-              <div className="category-icon">{category.icon}</div>
+              <div className="category-icon">
+                {category.icon}
+              </div>
+
               <h3>{category.name}</h3>
               <p>{category.text}</p>
             </Link>
@@ -215,90 +272,127 @@ function Home() {
         </div>
       </section>
 
-      
+      {/* Featured Products Section */}
       <section className="featured-section">
         <div className="featured-heading">
           <p>OUR PICKS</p>
+
           <div className="featured-title-row">
             <span></span>
             <h2>Featured Products</h2>
             <span></span>
           </div>
+
           <div className="small-heart">♡</div>
         </div>
 
         <div className="products-container">
-          {products.map((product) => (
-            <div className="featured-product" key={product.id}>
-              
-              <div className="product-image-box">
-                <Link
-                  to={`/product/${product.id}`}
-                  className="product-image-link"
-                >
-                  <img src={product.image} alt={product.name} />
-                </Link>
-
-              
-                <button
-                  className={`wishlist-button ${
-                    isWishlisted(product.id)
-                      ? "wishlist-button-active"
-                      : ""
-                  }`}
-                  type="button"
-                  onClick={() => toggleWishlist(product)}
-                  aria-label={
-                    isWishlisted(product.id)
-                      ? "Remove from wishlist"
-                      : "Add to wishlist"
-                  }
-                >
-                  {isWishlisted(product.id) ? "♥" : "♡"}
-                </button>
-              </div>
-
-            
-              <div className="product-information">
-                <p className="product-category">
-                  {product.category}
-                </p>
-
-                <h3>{product.name}</h3>
-
-                <div className="rating">
-                  <span>{product.rating}</span>
-                  <small>({product.reviews})</small>
-                </div>
-
-                <div className="product-bottom">
-                  <strong>{product.price}</strong>
-
-                
-                  <button
-                    className="add-cart-button"
-                    type="button"
-                    onClick={() => handleAddToCart(product)}
+          {loading ? (
+            <p>Loading products...</p>
+          ) : error ? (
+            <p>{error}</p>
+          ) : featuredProducts.length === 0 ? (
+            <p>No featured products available.</p>
+          ) : (
+            featuredProducts.map((product) => (
+              <div
+                className="featured-product"
+                key={product.id}
+              >
+                <div className="product-image-box">
+                  <Link
+                    to={`/product/${product.id}`}
+                    className="product-image-link"
                   >
-                    <span className="cart-button-icon">🛒</span>
-                    Add to Cart
+                    <img
+                      src={product.image || product.Image}
+                      alt={product.name}
+                    />
+                  </Link>
+
+                  <button
+                    className={`wishlist-button ${
+                      isWishlisted(product.id)
+                        ? "wishlist-button-active"
+                        : ""
+                    }`}
+                    type="button"
+                    disabled={wishlistLoading}
+                    onClick={() => toggleWishlist(product)}
+                    aria-label={
+                      isWishlisted(product.id)
+                        ? "Remove from wishlist"
+                        : "Add to wishlist"
+                    }
+                    aria-pressed={isWishlisted(product.id)}
+                  >
+                    {isWishlisted(product.id) ? "♥" : "♡"}
                   </button>
                 </div>
+
+                <div className="product-information">
+                  <p className="product-category">
+                    {product.category?.toUpperCase()}
+                  </p>
+
+                  <h3>{product.name}</h3>
+
+                  <div className="rating">
+                    <span>
+                      {"★".repeat(
+                        Math.min(
+                          5,
+                          Math.max(
+                            0,
+                            Math.round(Number(product.rating) || 0)
+                          )
+                        )
+                      )}
+                      {"☆".repeat(
+                        5 -
+                          Math.min(
+                            5,
+                            Math.max(
+                              0,
+                              Math.round(Number(product.rating) || 0)
+                            )
+                          )
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="product-bottom">
+                    <strong>₹{product.price}</strong>
+
+                    <button
+                      className="add-cart-button"
+                      type="button"
+                      onClick={() => handleAddToCart(product)}
+                    >
+                      <span className="cart-button-icon">
+                        🛒
+                      </span>
+                      Add to Cart
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         <div className="view-all-container">
-          <Link to="/products" className="view-all-button">
+          <Link
+            to="/products"
+            className="view-all-button"
+          >
             View All Products →
           </Link>
         </div>
       </section>
 
-    
+      {/* Offers and Why GLOVIA Section */}
       <section className="lower-section">
-        
         <div className="offer-card">
           <div className="offer-details">
             <p>GLOVIA SPECIAL</p>
@@ -314,7 +408,10 @@ function Home() {
               skincare essentials.
             </p>
 
-            <Link to="/products" className="offer-button">
+            <Link
+              to="/products"
+              className="offer-button"
+            >
               Explore Offers →
             </Link>
           </div>
@@ -332,7 +429,6 @@ function Home() {
           </div>
         </div>
 
-      
         <div className="why-glovia">
           <div className="why-heading">
             <p>WHY GLOVIA?</p>
@@ -350,8 +446,8 @@ function Home() {
               <div className="why-icon">♧</div>
               <h3>Carefully Selected</h3>
               <p>
-                Products chosen with your everyday beauty needs in
-                mind.
+                Products chosen with your everyday beauty needs
+                in mind.
               </p>
             </div>
 
@@ -374,7 +470,7 @@ function Home() {
         </div>
       </section>
 
-    
+      {/* Footer */}
       <footer className="glovia-footer">
         <div className="footer-logo">
           <div className="footer-brand">GLOVIA</div>

@@ -1,57 +1,124 @@
-
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import "./MyOrders.css";
 
+const API_URL = "http://127.0.0.1:8000/api/";
+
 function MyOrders() {
   const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
-    const savedOrders = JSON.parse(
-      localStorage.getItem("gloviaOrders") || "[]"
-    );
+    const fetchOrders = async () => {
+      const token = localStorage.getItem("gloviaToken");
 
-    
-    const uniqueOrders = savedOrders.filter(
-      (order, index, self) =>
-        order.orderId
-          ? index ===
-            self.findIndex(
-              (item) => item.orderId === order.orderId
-            )
-          : true
-    );
-
-    
-    const updatedOrders = uniqueOrders.map((order) => {
-      if (order.deliveryDate) {
-        return order;
+      if (!token) {
+        setError("Please log in to view your orders.");
+        setLoading(false);
+        return;
       }
 
-      const baseDate = new Date(
-        order.orderDate || order.date || Date.now()
-      );
+      try {
+        const response = await fetch(`${API_URL}orders/`, {
+          headers: {
+            Authorization: `Token ${token}`,
+            Accept: "application/json",
+          },
+        });
 
-      const deliveryDate = new Date(baseDate);
-      deliveryDate.setDate(deliveryDate.getDate() + 5);
+        const contentType =
+          response.headers.get("content-type") || "";
 
-      return {
-        ...order,
-        deliveryDate: deliveryDate.toISOString(),
-      };
-    });
+        if (!contentType.includes("application/json")) {
+          const responseText = await response.text();
 
-    
-    localStorage.setItem(
-      "gloviaOrders",
-      JSON.stringify(updatedOrders)
-    );
+          console.error(
+            "Orders API returned non-JSON response:",
+            responseText
+          );
 
-    
-    setOrders([...updatedOrders].reverse());
+          throw new Error(
+            `The server returned HTML instead of JSON (HTTP ${response.status}). Check your Django server and API URL.`
+          );
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              data.detail ||
+              "Unable to fetch your orders."
+          );
+        }
+
+        if (!Array.isArray(data)) {
+          throw new Error("Invalid orders response from server.");
+        }
+
+        const updatedOrders = data.map((order) => {
+          const orderDate =
+            order.created_at || new Date().toISOString();
+
+          const deliveryDate = new Date(orderDate);
+          deliveryDate.setDate(deliveryDate.getDate() + 5);
+
+          const statusMap = {
+            Placed: 0,
+            Processing: 1,
+            Shipped: 2,
+            Delivered: 4,
+            Cancelled: 0,
+          };
+
+          const items = (order.items || []).map((item) => {
+            const productImage = item.product_image || "";
+
+            return {
+              ...item,
+              name: item.product_name || "Product",
+              price: Number(item.price || 0),
+              quantity: Number(item.quantity || 1),
+              image: productImage,
+            };
+          });
+
+          return {
+            ...order,
+            orderId: order.id,
+            orderDate,
+            date: orderDate,
+            total: Number(order.total_amount || 0),
+            items,
+            trackingStatus: statusMap[order.status] ?? 0,
+            paymentMethod: order.payment_method || "N/A",
+            deliveryDate: deliveryDate.toISOString(),
+            backendStatus: order.status || "Placed",
+          };
+        });
+
+        setOrders(updatedOrders);
+
+        localStorage.setItem(
+          "gloviaOrders",
+          JSON.stringify(updatedOrders)
+        );
+      } catch (err) {
+        console.error("Failed to load orders:", err);
+        setError(
+          err.message ||
+            "Unable to load your orders. Please try again."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrders();
   }, []);
 
   const handleTrackOrder = (order) => {
@@ -63,19 +130,10 @@ function MyOrders() {
     navigate("/track-order");
   };
 
-  const trackingStages = [
-    "Order Placed",
-    "Order Confirmed",
-    "Shipped",
-    "Out for Delivery",
-    "Delivered",
-  ];
-
   return (
     <>
       <Navbar />
 
-  
       <section className="cart-header">
         <p>GLOVIA COLLECTION</p>
         <h1>My Orders</h1>
@@ -84,10 +142,25 @@ function MyOrders() {
         </p>
       </section>
 
-      
       <div className="my-orders-page">
         <div className="my-orders-container">
-          {orders.length === 0 ? (
+          {loading ? (
+            <div className="no-orders">
+              <h2>Loading Orders...</h2>
+              <p>Please wait while we fetch your orders.</p>
+            </div>
+          ) : error ? (
+            <div className="no-orders">
+              <h2>Unable to Load Orders</h2>
+              <p>{error}</p>
+              <button
+                className="my-order-track-btn"
+                onClick={() => window.location.reload()}
+              >
+                Try Again
+              </button>
+            </div>
+          ) : orders.length === 0 ? (
             <div className="no-orders">
               <h2>No Orders Yet</h2>
               <p>You haven't placed any orders yet.</p>
@@ -98,100 +171,94 @@ function MyOrders() {
             </div>
           ) : (
             <div className="my-orders-list">
-              {orders.map((order, index) => {
-                const statusIndex = Math.min(
-                  Math.max(
-                    Number(order.trackingStatus) || 0,
-                    0
-                  ),
-                  4
-                );
-
-                const isDelivered = statusIndex === 4;
+              {orders.map((order) => {
+                const isDelivered =
+                  order.backendStatus === "Delivered";
 
                 return (
                   <div
                     className="my-order-card"
-                    key={order.orderId || index}
+                    key={order.orderId}
                   >
-                    
                     <div className="my-order-header">
                       <div>
                         <h3>Order ID</h3>
-                        <p>{order.orderId || "N/A"}</p>
+                        <p>#{order.orderId}</p>
                       </div>
 
                       <div>
                         <h3>Order Date</h3>
                         <p>
-                          {order.orderDate
-                            ? new Date(
-                                order.orderDate
-                              ).toLocaleDateString("en-IN")
-                            : order.date
-                            ? new Date(
-                                order.date
-                              ).toLocaleDateString("en-IN")
-                            : "N/A"}
+                          {new Date(
+                            order.orderDate
+                          ).toLocaleDateString("en-IN")}
                         </p>
                       </div>
                     </div>
 
-                  
                     <div className="my-order-products">
-                      {(order.items || []).map(
-                        (item, itemIndex) => (
-                          <div
-                            className="my-order-product"
-                            key={item.id || itemIndex}
-                          >
+                      {order.items.map((item, itemIndex) => (
+                        <div
+                          className="my-order-product"
+                          key={item.id || itemIndex}
+                        >
+                          {item.image ? (
                             <img
-                              src={item.image || item.Image}
-                              alt={
-                                item.name ||
-                                item.Name ||
-                                "Product"
-                              }
+                              src={item.image}
+                              alt={item.name}
+                              onError={(event) => {
+                                event.currentTarget.style.display =
+                                  "none";
+                                const placeholder =
+                                  event.currentTarget.nextElementSibling;
+
+                                if (placeholder) {
+                                  placeholder.style.display = "flex";
+                                }
+                              }}
                             />
+                          ) : null}
 
-                            <div className="my-order-product-info">
-                              <h4>{item.name || item.Name}</h4>
-
-                              <p>
-                                Quantity: {item.quantity || 1}
-                              </p>
-
-                              <p>
-                                ₹
-                                {(
-                                  Number(
-                                    item.price ||
-                                      item.Price ||
-                                      0
-                                  ) *
-                                  Number(item.quantity || 1)
-                                ).toFixed(2)}
-                              </p>
-                            </div>
+                          <div
+                            className="my-order-product-placeholder"
+                            style={{
+                              display: item.image ? "none" : "flex",
+                            }}
+                          >
+                            GLOVIA
                           </div>
-                        )
-                      )}
+
+                          <div className="my-order-product-info">
+                            <h4>{item.name}</h4>
+
+                            <p>
+                              Quantity: {item.quantity}
+                            </p>
+
+                            <p>
+                              ₹
+                              {(
+                                item.price * item.quantity
+                              ).toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
-                    
                     <div className="my-order-footer">
                       <div>
                         <h3>
                           Total: ₹
-                          {Number(order.total || 0).toFixed(2)}
+                          {order.total.toFixed(2)}
                         </h3>
 
                         <p>
-                          Payment: {order.paymentMethod || "N/A"}
+                          Payment: {order.paymentMethod}
                         </p>
 
                         <p>
-                          Status: {trackingStages[statusIndex]}
+                          Status: {order.backendStatus}
                         </p>
 
                         <p>
@@ -200,30 +267,27 @@ function MyOrders() {
                               ? "Delivery Date:"
                               : "Expected Delivery:"}
                           </strong>{" "}
-
-                          {order.deliveryDate
-                            ? new Date(
-                                order.deliveryDate
-                              ).toLocaleDateString("en-IN", {
-                                day: "numeric",
-                                month: "long",
-                                year: "numeric",
-                              })
-                            : "Not available"}
+                          {new Date(
+                            order.deliveryDate
+                          ).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          })}
                         </p>
                       </div>
 
-                      
-                      {!isDelivered && (
-                        <button
-                          className="my-order-track-btn"
-                          onClick={() =>
-                            handleTrackOrder(order)
-                          }
-                        >
-                          Track Order
-                        </button>
-                      )}
+                      {!isDelivered &&
+                        order.backendStatus !== "Cancelled" && (
+                          <button
+                            className="my-order-track-btn"
+                            onClick={() =>
+                              handleTrackOrder(order)
+                            }
+                          >
+                            Track Order
+                          </button>
+                        )}
                     </div>
                   </div>
                 );
@@ -234,6 +298,27 @@ function MyOrders() {
       </div>
 
       <Footer />
+
+      <style>{`
+        .my-order-product-placeholder {
+          width: 85px;
+          height: 85px;
+          flex-shrink: 0;
+          align-items: center;
+          justify-content: center;
+          background: #fff3f3;
+          color: #8b4149;
+          font-size: 12px;
+          letter-spacing: 1px;
+        }
+
+        .my-order-product img {
+          width: 85px;
+          height: 85px;
+          object-fit: cover;
+          flex-shrink: 0;
+        }
+      `}</style>
     </>
   );
 }

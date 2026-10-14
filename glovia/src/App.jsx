@@ -20,6 +20,7 @@ import OrderSuccess from "./pages/OrderSuccess";
 import OrderTracking from "./pages/OrderTracking";
 import MyOrders from "./pages/MyOrders";
 import AddToCartPopup from "./components/AddToCartPopup";
+import Profile from "./pages/Profile";
 
 import { CartProvider } from "./context/CartContext";
 
@@ -99,6 +100,7 @@ function App() {
           <Route path="/track-order" element={<OrderTracking />} />
           <Route path="/orders" element={<MyOrders />} />
           <Route path="/orders" element={<AddToCartPopup />} />
+          <Route path="/profile" element={<Profile />} />
         </Routes>
       </BrowserRouter>
     </CartProvider>

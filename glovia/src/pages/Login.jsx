@@ -4,21 +4,88 @@ import { Link, useNavigate } from "react-router-dom";
 function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [socialMessage, setSocialMessage] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
 
-    
-    localStorage.setItem("gloviaLoggedIn", "true");
+    setError("");
+    setLoading(true);
 
-    navigate("/home");
+    try {
+      /*
+       * Registration creates the username from the email.
+       * Example:
+       * poojaramadhas@gmail.com
+       * becomes
+       * poojaramadhas
+       *
+       * So if the user enters an email here,
+       * convert it to the username automatically.
+       */
+      let loginUsername = username.trim();
+
+      if (loginUsername.includes("@")) {
+        loginUsername = loginUsername.split("@")[0];
+      }
+
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/login/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: loginUsername,
+            password: password,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(
+          data.non_field_errors?.[0] ||
+          "Invalid username/email or password."
+        );
+
+        setLoading(false);
+        return;
+      }
+
+      // Save Django authentication token
+      localStorage.setItem("gloviaToken", data.token);
+
+      // Keep existing login status
+      localStorage.setItem("gloviaLoggedIn", "true");
+
+      setLoading(false);
+
+      navigate("/home");
+
+    } catch (error) {
+      console.error("Login error:", error);
+
+      setError(
+        "Unable to connect to the server. Please make sure Django is running."
+      );
+
+      setLoading(false);
+    }
   };
 
   return (
     <div className="login-page">
 
-      
+      {/* LEFT SHOWCASE */}
+
       <div className="login-showcase">
 
         <div className="showcase-content">
@@ -36,23 +103,24 @@ function Login() {
           </p>
 
           <div className="product-photo">
+
             <img
               src="/images/skincare-products.jpg"
               alt="GLOVIA skincare products"
             />
+
           </div>
 
         </div>
 
       </div>
 
+      {/* LOGIN SECTION */}
 
-      
       <div className="login-section">
 
         <div className="login-card">
 
-          
           <div className="welcome-icon">
             ♡
           </div>
@@ -63,37 +131,54 @@ function Login() {
             Login to continue your skincare journey
           </p>
 
-
-          
           <form onSubmit={handleLogin}>
 
-            
-            <label>Email Address</label>
+            {/* USERNAME / EMAIL */}
+
+            <label>Username or Email</label>
 
             <div className="input-wrapper">
 
-              <span className="input-icon">✉</span>
+              <span className="input-icon">
+                ✉
+              </span>
 
               <input
-                type="email"
-                placeholder="Enter your email"
+                type="text"
+                placeholder="Enter your username or email"
+                value={username}
+                onChange={(e) =>
+                  setUsername(e.target.value)
+                }
                 required
+                autoComplete="username"
               />
 
             </div>
 
+            {/* PASSWORD */}
 
-          
             <label>Password</label>
 
             <div className="input-wrapper">
 
-              <span className="input-icon">🔒</span>
+              <span className="input-icon">
+                🔒
+              </span>
 
               <input
-                type={showPassword ? "text" : "password"}
+                type={
+                  showPassword
+                    ? "text"
+                    : "password"
+                }
                 placeholder="Enter your password"
+                value={password}
+                onChange={(e) =>
+                  setPassword(e.target.value)
+                }
                 required
+                autoComplete="current-password"
               />
 
               <button
@@ -108,8 +193,8 @@ function Login() {
 
             </div>
 
+            {/* FORGOT PASSWORD */}
 
-            
             <div className="forgot-password">
 
               <Link to="/forgot-password">
@@ -118,19 +203,34 @@ function Login() {
 
             </div>
 
+            {/* ERROR */}
 
-            
+            {error && (
+              <p
+                style={{
+                  color: "red",
+                  marginBottom: "12px",
+                  fontSize: "14px",
+                }}
+              >
+                {error}
+              </p>
+            )}
+
+            {/* LOGIN BUTTON */}
+
             <button
               type="submit"
               className="login-btn"
+              disabled={loading}
             >
-              Login
+              {loading ? "Logging in..." : "Login"}
             </button>
 
           </form>
 
+          {/* DIVIDER */}
 
-          
           <div className="divider">
 
             <span></span>
@@ -141,14 +241,17 @@ function Login() {
 
           </div>
 
+          {/* SOCIAL LOGIN */}
 
-          
           <div className="social-login">
 
-            
+            {/* GOOGLE */}
+
             <button
               type="button"
-              onClick={() => setSocialMessage("Google")}
+              onClick={() =>
+                setSocialMessage("Google")
+              }
               title="Continue with Google"
             >
 
@@ -182,11 +285,13 @@ function Login() {
 
             </button>
 
+            {/* FACEBOOK */}
 
-            
             <button
               type="button"
-              onClick={() => setSocialMessage("Facebook")}
+              onClick={() =>
+                setSocialMessage("Facebook")
+              }
               title="Continue with Facebook"
             >
 
@@ -205,11 +310,13 @@ function Login() {
 
             </button>
 
+            {/* APPLE */}
 
-          
             <button
               type="button"
-              onClick={() => setSocialMessage("Apple")}
+              onClick={() =>
+                setSocialMessage("Apple")
+              }
               title="Continue with Apple"
             >
 
@@ -226,7 +333,7 @@ function Login() {
 
                 <path
                   fill="#000"
-                  d="M15.04 6.62a3.47 3.47 0 0 0 .8-2.49 3.57 3.57 0 0 0-2.3 1.19 3.29 3.29 0 0 0-.82 2.39 2.94 2.94 0 0 0 2.32-1.09z"
+                  d="M15.04 6.62a3.47 3.47 0 0 0 .8-2.49 3.57 3.57 0 0 0-.82 2.39 2.94 2.94 0 0 0 2.32-1.09z"
                 />
 
               </svg>
@@ -235,8 +342,8 @@ function Login() {
 
           </div>
 
+          {/* REGISTER */}
 
-        
           <p className="register-text">
 
             Don't have an account?{" "}
@@ -251,8 +358,8 @@ function Login() {
 
       </div>
 
+      {/* SOCIAL MODAL */}
 
-      
       {socialMessage && (
 
         <div
@@ -262,19 +369,20 @@ function Login() {
 
           <div
             className="social-modal"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) =>
+              e.stopPropagation()
+            }
           >
 
-          
             <button
               className="modal-close"
-              onClick={() => setSocialMessage("")}
+              onClick={() =>
+                setSocialMessage("")
+              }
             >
               ×
             </button>
 
-
-            
             <div className="modal-icon">
 
               {socialMessage === "Google" && "G"}
@@ -285,11 +393,9 @@ function Login() {
 
             </div>
 
-
             <h2>
               Continue with {socialMessage}
             </h2>
-
 
             <p>
               {socialMessage} sign-in is not connected yet.
@@ -297,10 +403,11 @@ function Login() {
               Please use your GLOVIA account to continue.
             </p>
 
-
             <button
               className="modal-login-btn"
-              onClick={() => setSocialMessage("")}
+              onClick={() =>
+                setSocialMessage("")
+              }
             >
               Continue with GLOVIA
             </button>

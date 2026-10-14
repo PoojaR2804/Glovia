@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
@@ -28,17 +27,25 @@ const trackingStages = [
   },
 ];
 
-function OrderTracking() {
-  const [order, setOrder] = useState(() => {
-    const saved = JSON.parse(
+function readStoredOrder() {
+  try {
+    return JSON.parse(
       localStorage.getItem("gloviaCurrentOrder") || "null"
     );
+  } catch {
+    return null;
+  }
+}
+
+function OrderTracking() {
+  const [order, setOrder] = useState(() => {
+    const saved = readStoredOrder();
 
     if (!saved) return null;
 
     return {
       ...saved,
-      trackingStatus: saved.trackingStatus || 0,
+      trackingStatus: Number(saved.trackingStatus) || 0,
     };
   });
 
@@ -51,6 +58,7 @@ function OrderTracking() {
     };
 
     setOrder(updatedOrder);
+
     localStorage.setItem(
       "gloviaCurrentOrder",
       JSON.stringify(updatedOrder)
@@ -61,12 +69,16 @@ function OrderTracking() {
     );
 
     const updatedOrders = orders.map((item) =>
-      item.orderId === updatedOrder.orderId
+      String(item.orderId ?? item.id) ===
+      String(updatedOrder.orderId ?? updatedOrder.id)
         ? updatedOrder
         : item
     );
 
-    localStorage.setItem("gloviaOrders", JSON.stringify(updatedOrders));
+    localStorage.setItem(
+      "gloviaOrders",
+      JSON.stringify(updatedOrders)
+    );
   };
 
   if (!order) {
@@ -88,7 +100,48 @@ function OrderTracking() {
     trackingStages.length - 1
   );
 
-  const address = order.address || {};
+  // Address may be an object from checkout or a string from Django.
+  const savedCheckout = (() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("gloviaCheckout") || "null"
+      );
+    } catch {
+      return null;
+    }
+  })();
+
+  const checkoutAddress = savedCheckout?.address || {};
+
+  const address =
+    order.address && typeof order.address === "object"
+      ? order.address
+      : order.deliveryAddress &&
+          typeof order.deliveryAddress === "object"
+        ? order.deliveryAddress
+        : checkoutAddress;
+
+  const addressText =
+    typeof order.address === "string" ? order.address : "";
+
+  const fullName =
+    address.fullName || order.full_name || "";
+
+  const house =
+    address.house ||
+    address.street ||
+    (addressText ? addressText : "");
+
+  const city = address.city || "";
+  const state = address.state || "";
+  const pincode = address.pincode || address.pinCode || "";
+  const phone = address.phone || order.phone || "";
+
+  const items =
+    order.items ||
+    order.checkoutItems ||
+    order.products ||
+    [];
 
   return (
     <>
@@ -106,7 +159,7 @@ function OrderTracking() {
             <div className="tracking-order-top">
               <div>
                 <span className="tracking-label">Order ID</span>
-                <h2>{order.orderId}</h2>
+                <h2>{order.orderId || order.id || "N/A"}</h2>
               </div>
 
               <span className="tracking-status-badge">
@@ -118,15 +171,22 @@ function OrderTracking() {
               <div>
                 <span>Order Date</span>
                 <strong>
-                  {order.orderDate
-                    ? new Date(order.orderDate).toLocaleDateString("en-IN")
+                  {order.orderDate || order.created_at
+                    ? new Date(
+                        order.orderDate || order.created_at
+                      ).toLocaleDateString("en-IN")
                     : "N/A"}
                 </strong>
               </div>
 
               <div>
                 <span>Total Amount</span>
-                <strong>₹{Number(order.total || 0).toFixed(2)}</strong>
+                <strong>
+                  ₹
+                  {Number(
+                    order.total ?? order.total_amount ?? 0
+                  ).toFixed(2)}
+                </strong>
               </div>
             </div>
           </div>
@@ -171,6 +231,7 @@ function OrderTracking() {
 
             {currentStage < trackingStages.length - 1 ? (
               <button
+                type="button"
                 className="tracking-update-btn"
                 onClick={() => updateTracking(currentStage + 1)}
               >
@@ -186,41 +247,78 @@ function OrderTracking() {
           <div className="tracking-details-grid">
             <div className="tracking-info-card">
               <h2>Delivery Address</h2>
-              <h3>{address.fullName}</h3>
-              <p>{address.house}</p>
-              <p>
-                {address.city}, {address.state} - {address.pincode}
-              </p>
-              <p>Phone: {address.phone}</p>
+
+              <h3>{fullName || "Name not available"}</h3>
+
+              {house && <p>{house}</p>}
+
+              {(city || state || pincode) && (
+                <p>
+                  {[city, state].filter(Boolean).join(", ")}
+                  {pincode ? ` - ${pincode}` : ""}
+                </p>
+              )}
+
+              {phone && <p>Phone: {phone}</p>}
+
+              {!fullName && !house && !city && !phone && (
+                <p>
+                  Address details are unavailable for this order.
+                  Please check out again to save the delivery details.
+                </p>
+              )}
             </div>
 
             <div className="tracking-info-card">
               <h2>Order Summary</h2>
 
-              {order.items?.map((item) => (
-                <div className="tracking-product" key={item.id}>
-                  <img
-                    src={item.image || item.Image}
-                    alt={item.name}
-                  />
+              {items.map((item, index) => {
+                const name =
+                  item.name ||
+                  item.product_name ||
+                  item.Name ||
+                  item.product?.name ||
+                  "Product";
 
-                  <div>
-                    <h4>{item.name}</h4>
-                    <p>Quantity: {item.quantity || 1}</p>
-                    <strong>
-                      ₹
-                      {(
-                        Number(item.price) *
-                        Number(item.quantity || 1)
-                      ).toFixed(2)}
-                    </strong>
+                const quantity = Number(item.quantity || 1);
+                const price = Number(
+                  item.price ?? item.Price ?? item.product?.price ?? 0
+                );
+
+                const image =
+                  item.image ||
+                  item.Image ||
+                  item.product_image ||
+                  item.product?.image;
+
+                return (
+                  <div
+                    className="tracking-product"
+                    key={item.id || index}
+                  >
+                    {image && (
+                      <img src={image} alt={name} />
+                    )}
+
+                    <div>
+                      <h4>{name}</h4>
+                      <p>Quantity: {quantity}</p>
+                      <strong>
+                        ₹{(price * quantity).toFixed(2)}
+                      </strong>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               <div className="tracking-total">
                 <span>Total</span>
-                <strong>₹{Number(order.total || 0).toFixed(2)}</strong>
+                <strong>
+                  ₹
+                  {Number(
+                    order.total ?? order.total_amount ?? 0
+                  ).toFixed(2)}
+                </strong>
               </div>
             </div>
           </div>
