@@ -1,4 +1,4 @@
-const API_URL = "http://127.0.0.1:8000/api/products/";
+const API_URL = "https://glovia-backend-8zxd.onrender.com/api/products/";
 
 export const fetchProducts = async () => {
   const response = await fetch(API_URL);

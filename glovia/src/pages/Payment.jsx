@@ -4,7 +4,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import "./Payment.css";
 
-const API_URL = "http://127.0.0.1:8000/api/";
+const API_URL = "https://glovia-backend-8zxd.onrender.com/api/";
 
 function Payment() {
   const navigate = useNavigate();

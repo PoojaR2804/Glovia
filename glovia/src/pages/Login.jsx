@@ -35,7 +35,7 @@ function Login() {
       }
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/login/",
+        "https://glovia-backend-8zxd.onrender.com/api/login/",
         {
           method: "POST",
           headers: {

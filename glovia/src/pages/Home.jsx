@@ -20,7 +20,7 @@ function Home() {
   const [wishlist, setWishlist] = useState([]);
   const [wishlistLoading, setWishlistLoading] = useState(false);
 
-  const API_URL = "http://127.0.0.1:8000/api";
+  const API_URL = "https://glovia-backend-8zxd.onrender.com/api";
   const getToken = () => localStorage.getItem("gloviaToken");
 
   // Load products from Django

@@ -34,7 +34,7 @@ function Register() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/register/",
+        "https://glovia-backend-8zxd.onrender.com/api/register/",
         {
           method: "POST",
           headers: {
