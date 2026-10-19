@@ -4,9 +4,9 @@ GLOVIA is a full-stack skincare e-commerce web application designed to provide a
 
 ## Live Demo
 
-- **Frontend:** https://glovia-kohl.vercel.app/
+- **Live Website:** https://glovia-kohl.vercel.app/
 - **GitHub Repository:** https://github.com/PoojaR2804/Glovia
-- **Backend API:** Deployment in progress
+
 
 ## Features
 
